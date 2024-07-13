@@ -547,7 +547,9 @@ typedef enum {
     FLAG_BORDERLESS_WINDOWED_MODE = 0x00008000,   // Set to run program in borderless windowed mode
     FLAG_MSAA_4X_HINT             = 0x00000020,   // Set to try enabling MSAA 4X
     FLAG_INTERLACED_HINT          = 0x00010000,   // Set to try enabling interlaced video format (for V3D)
-    FLAG_RESCALE_CONTENT          = 0x10000000    // Set to rescale the content of the window when the window is resized or fullscreen
+
+    // Experimental flags :
+    FLAG_RESCALE_CONTENT          = 0x10000000    // (Experimental) Set to rescale the content of the window when the window is resized or fullscreened
 } ConfigFlags;
 
 // Trace log level
