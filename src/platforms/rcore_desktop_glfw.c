@@ -160,11 +160,12 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight) // TO
 
     bool weAreInWindowedMode = !CORE.Window.fullscreen;
     bool screenAndDisplayAreSameSize = (CORE.Window.screen.width == CORE.Window.display.width) && (CORE.Window.screen.height == CORE.Window.display.height);
+    bool weDontWantToRescaleAndCenter = ! (CORE.Window.flags & FLAG_RESCALE_CONTENT);
 
     // We only need rescaling and offseting if we're in fullscreen mode 
     // and if the sizes of screen and display differ :
 
-    if ( weAreInWindowedMode || screenAndDisplayAreSameSize )
+    if ( screenAndDisplayAreSameSize || weDontWantToRescaleAndCenter )
     {
         // In windowed mode, there is no difference between the size of render
         // and the size of the window's framebuffer :
@@ -794,6 +795,12 @@ void SetWindowState(unsigned int flags)
     if (((CORE.Window.flags & FLAG_INTERLACED_HINT) != (flags & FLAG_INTERLACED_HINT)) && ((flags & FLAG_INTERLACED_HINT) > 0))
     {
         TRACELOG(LOG_WARNING, "RPI: Interlaced mode can only be configured before window initialization");
+    }
+
+    // State change: FLAG_RESCALE_CONTENT
+    if (((CORE.Window.flags & FLAG_RESCALE_CONTENT) != (flags & FLAG_RESCALE_CONTENT)) && ((flags & FLAG_RESCALE_CONTENT) > 0))
+    {
+        TRACELOG(LOG_WARNING, "TODO: SetWindowState(FLAG_RESCALE_CONTENT)");
     }
 }
 
@@ -1998,7 +2005,9 @@ static void WindowSizeCallback(GLFWwindow *window, int width, int height)
     CORE.Window.currentFbo.height = height;
     CORE.Window.resizedLastFrame = true;
 
-    if ( CORE.Window.fullscreen )
+    bool weWantToRescaleAndCenter = (CORE.Window.flags & FLAG_RESCALE_CONTENT);
+
+    if ( weWantToRescaleAndCenter )
     {
         // Fullscreen mode need render size because
         // the screen surface will be resized
