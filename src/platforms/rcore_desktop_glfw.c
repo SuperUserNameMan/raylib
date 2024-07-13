@@ -256,17 +256,22 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight)
     // either it is smaller and we need to upscale it, but that's the same algorithm.
     // Only the TRACELOG message changes :
 
+    if ( ! weDontWantToRescaleAndCenter )
+    {
+        TRACELOG(LOG_WARNING, "DISPLAY: FLAG_RESCALE_CONTENT is still WIP and experimental." );
+    }
+
     bool screenIsBiggerThanDisplay = (CORE.Window.screen.width > frameBufferWidth) || (CORE.Window.screen.height > frameBufferHeight);
     bool screenIsSmallerThanDisplay = !screenIsBiggerThanDisplay;
     
     if ( screenIsBiggerThanDisplay )
     {
-        TRACELOG(LOG_WARNING, "DISPLAY: Downscaling required: Screen size (%ix%i) is bigger than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
+        TRACELOG(LOG_DEBUG, "DISPLAY: Downscaling required: Screen size (%ix%i) is bigger than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
     }
     else
     if ( screenIsSmallerThanDisplay )
     {
-        TRACELOG(LOG_WARNING, "DISPLAY: Upscaling required: Screen size (%ix%i) is smaller than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
+        TRACELOG(LOG_DEBUG, "DISPLAY: Upscaling required: Screen size (%ix%i) is smaller than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
     }
 
     // Aspect ratio of each surface :
@@ -318,7 +323,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight)
 
     CORE.Window.screenScale = MatrixScale(scaleRatio, scaleRatio, 1.0f);
 
-    TRACELOG(LOG_WARNING, "DISPLAY: Rescale matrix generated, content will be rendered at (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height);
+    TRACELOG(LOG_DEBUG, "DISPLAY: Rescale matrix generated, content will be rendered at (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height);
 }
 
 
@@ -1612,8 +1617,14 @@ int InitPlatform(void)
     }
 
     // Mouse passthrough
-    if ((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0) glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
-    else glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_FALSE);
+    if ((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0)
+    {
+        glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
+    }
+    else 
+    {
+        glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_FALSE);
+    }
 
     if (CORE.Window.flags & FLAG_MSAA_4X_HINT)
     {
@@ -1915,6 +1926,22 @@ static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int fra
     _SetupFramebuffer(frameBufferWidth, frameBufferHeight);
 
     SetupViewport(CORE.Window.render.width, CORE.Window.render.height);
+
+    // We have to rescale and offset the mouse coordinate system 
+    // so that it always matches the offset and scale of the "screen" surface
+
+#if !defined(__APPLE__)
+    if ( glfwGetPlatform() != GLFW_PLATFORM_WAYLAND )
+    {
+        float mouseScaleX = (float)CORE.Window.screen.width/(float)CORE.Window.render.width;
+        float mouseScaleY = (float)CORE.Window.screen.height/(float)CORE.Window.render.height;
+        SetMouseScale(mouseScaleX, mouseScaleY);
+    }
+#endif
+
+    float mouseOffsetX = -0.5f*CORE.Window.renderOffset.x;
+    float mouseOffsetY = -0.5f*CORE.Window.renderOffset.y;
+    SetMouseOffset( mouseOffsetX , mouseOffsetY );
 
     // NOTE: Postprocessing texture is not scaled to new size
 }
