@@ -124,6 +124,13 @@ static void MouseScrollCallback(GLFWwindow *window, double xoffset, double yoffs
 static void CursorEnterCallback(GLFWwindow *window, int enter);                            // GLFW3 Cursor Enter Callback, cursor enters client area
 static void JoystickCallback(int jid, int event);                                           // GLFW3 Joystick Connected/Disconnected Callback
 
+static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight); // Better implementation of SetupFramebuffer()
+
+static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate); 
+static void _DeactivateFullscreenMode();
+
+static void _SetupMouseScaleAndOffset(); // Update mouse scale and offset according to current viewport
+
 //----------------------------------------------------------------------------------
 // Module Functions Declaration
 //----------------------------------------------------------------------------------
@@ -182,7 +189,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight)
     // - the size of `render` is always the same as the size of the frameBuffer
     // - the size of `screen` is unscaled, and is thus the same as `render`
     // - the size of `screen`, `render` are expressed in pixels
-    // - TODO take FLAG_WINDOW_HIGHDPI in consideration
+    // - TODO explain when FLAG_WINDOW_HIGHDPI is enabled
 
     // When `FLAG_RESCALE_CONTENT` is on :
     // - the size of `render` is the size of `screen` rescaled to fit inside the frameBuffer
@@ -191,7 +198,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight)
     // - the size of `render` is expressed in pixels
     // - the size of `screen` is expressed in opengl 2D coordinate units
     // - once rendered into the `render` viewport, a 'screen' space unit is equal to `CORE.Window.screenScale` pixels
-    // - TODO take FLAG_WINDOW_HIGHDPI in consideration
+    // - TODO explain when FLAG_WINDOW_HIGHDPI is enabled
 
     // Some booleans to ease code reading :
 
@@ -514,6 +521,12 @@ void ToggleBorderlessWindowed(void)
 
         if (mode)
         {
+            TRACELOG(LOG_INFO, "DISPLAY: ToggleBorderlessWindowed before");
+            TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
+            TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
+            TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
+            TRACELOG(LOG_INFO, "    > Screen scale: %f x %f", CORE.Window.screenScale.m0, CORE.Window.screenScale.m5);
+            TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
             if (!IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE))
             {
                 // Store screen position and size :
@@ -555,6 +568,12 @@ void ToggleBorderlessWindowed(void)
 
                 CORE.Window.flags &= ~FLAG_BORDERLESS_WINDOWED_MODE;
             }
+            TRACELOG(LOG_INFO, "DISPLAY: ToggleBorderlessWindowed after");
+            TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
+            TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
+            TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
+            TRACELOG(LOG_INFO, "    > Screen scale: %f x %f", CORE.Window.screenScale.m0, CORE.Window.screenScale.m5);
+            TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
         }
         else TRACELOG(LOG_WARNING, "GLFW: Failed to find video mode for selected monitor");
     }
@@ -1526,18 +1545,6 @@ void PollInputEvents(void)
 // Module Internal Functions Definition
 //----------------------------------------------------------------------------------
 
-static void SetDimensionsFromMonitor(GLFWmonitor *monitor)
-{
-  const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-
-  // Default display resolution to that of the current mode
-  CORE.Window.display.width = mode->width;
-  CORE.Window.display.height = mode->height;
-
-  // Set screen width/height to the display width/height if they are 0
-  if (CORE.Window.screen.width == 0) CORE.Window.screen.width = CORE.Window.display.width;
-  if (CORE.Window.screen.height == 0) CORE.Window.screen.height = CORE.Window.display.height;
-}
 
 // Initialize platform: graphics, inputs and more
 int InitPlatform(void)
@@ -1689,55 +1696,93 @@ int InitPlatform(void)
 
     GLFWmonitor *monitor = NULL;
     
-    // Even if FLAG_FULLSCREEN_MODE was enabled, for now  we just open a window
-    // and we will toggle fullscreen at the end 
+    // Even if FLAG_FULLSCREEN_MODE was enabled, for now we will 
+    // just open a window and we will toggle fullscreen at the end.
+    // Same with Windowed Fullscreen request.
 
+    bool requestWindowedFullscreen = (CORE.Window.screen.height == 0) && (CORE.Window.screen.width == 0);
 
+    if ( requestWindowedFullscreen && CORE.Window.fullscreen ) 
     {
-        // No-fullscreen window creation TODO FIXME
-        bool requestWindowedFullscreen = (CORE.Window.screen.height == 0) && (CORE.Window.screen.width == 0);
-
-        // If we are windowed fullscreen, ensures that window does not minimize when focus is lost.
-        // This hinting code will not work if the user already specified the correct monitor dimensions;
-        // at this point we don't know the monitor's dimensions. (Though, how did the user then?)
-        if (requestWindowedFullscreen) glfwWindowHint(GLFW_AUTO_ICONIFY, 0);
-
-        // Default to at least one pixel in size, as creation with a zero dimension is not allowed.
-        int creationWidth = CORE.Window.screen.width != 0 ? CORE.Window.screen.width : 1;
-        int creationHeight = CORE.Window.screen.height != 0 ? CORE.Window.screen.height : 1;
-
-        platform.handle = glfwCreateWindow(creationWidth, creationHeight, (CORE.Window.title != 0)? CORE.Window.title : " ", NULL, NULL);
-
-        // After the window was created, determine the monitor that the window manager assigned.
-        // Derive display sizes, and, if possible, window size in case it was zero at beginning.
-
-        int monitorCount = 0;
-        int monitorIndex = GetCurrentMonitor();
-        GLFWmonitor **monitors = glfwGetMonitors(&monitorCount);
-
-        if (monitorIndex < monitorCount)
-        {
-            monitor = monitors[monitorIndex];
-            SetDimensionsFromMonitor(monitor);
-
-            if (requestWindowedFullscreen) glfwSetWindowSize(platform.handle, CORE.Window.screen.width, CORE.Window.screen.height);
-        }
-        else
-        {
-            // The monitor for the window-manager-created window can not be determined, so it can not be centered.
-            glfwTerminate();
-            TRACELOG(LOG_WARNING, "GLFW: Failed to determine Monitor to center Window");
-            return -1;
-        }
-
-        if (platform.handle)
-        {
-            CORE.Window.render.width = CORE.Window.screen.width;
-            CORE.Window.render.height = CORE.Window.screen.height;
-        }
+        TRACELOG(LOG_WARNING, "DISPLAY: both fullscreen modes were requested. Ignoring `FLAG_FULLSCREEN_MODE`.");
+        CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
+        CORE.Window.fullscreen = false ; // We can't have both
     }
 
-    if (!platform.handle)
+    // If we are windowed fullscreen, ensures that window does not minimize when focus is lost.
+    // This hinting code will not work if the user already specified the correct monitor dimensions;
+    // at this point we don't know the monitor's dimensions. (Though, how did the user then?)
+//TODO    if (requestWindowedFullscreen) glfwWindowHint(GLFW_AUTO_ICONIFY, 0);
+
+    // Default to at least one pixel in size, as creation with a zero dimension is not allowed.
+    int creationWidth = CORE.Window.screen.width > 0 ? CORE.Window.screen.width : 1;
+    int creationHeight = CORE.Window.screen.height > 0 ? CORE.Window.screen.height : 1;
+
+    platform.handle = glfwCreateWindow(creationWidth, creationHeight, (CORE.Window.title != 0)? CORE.Window.title : " ", NULL, NULL);
+
+    // After the window was created, determine the monitor that the window manager assigned.
+    // Derive display sizes, and, if possible, window size in case it was zero at beginning.
+
+    int monitorCount = 0;
+    int monitorIndex = GetCurrentMonitor();
+    GLFWmonitor **monitors = glfwGetMonitors(&monitorCount);
+
+    if (monitorIndex < monitorCount)
+    {
+        monitor = monitors[monitorIndex];
+
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        CORE.Window.display.width = mode->width;
+        CORE.Window.display.height = mode->height;
+
+        if (requestWindowedFullscreen) 
+        {
+            // When we will toggle to windowed fullscreen
+            // we will need a "previous window size" that is not 1x1
+            // and a previous position that is not the middle of the screen
+            CORE.Window.screen.width = mode->width;
+            CORE.Window.screen.height = mode->height;
+            glfwSetWindowPos(platform.handle, 0 , 0 );
+            glfwSetWindowSize(platform.handle, mode->width, mode->height); 
+
+        }
+    }
+    else
+    {
+        // The monitor for the window-manager-created window can not be determined, so it can not be centered.
+        glfwTerminate();
+        TRACELOG(LOG_WARNING, "GLFW: Failed to determine Monitor to center Window");
+        return -1;
+    }
+
+
+    if (platform.handle)
+    {
+        CORE.Window.render.width = CORE.Window.screen.width;
+        CORE.Window.render.height = CORE.Window.screen.height;
+        _SetupFramebuffer( CORE.Window.render.width , CORE.Window.render.height );
+
+        // Activate fullscreen mode if requested
+        //----------------------------------------------------------------------------
+
+        if ( requestWindowedFullscreen )
+        {
+            ToggleBorderlessWindowed();
+        }
+        else
+        if ( CORE.Window.fullscreen )
+        {
+            // Toggle fullscreen mode on primary monitor :
+            if ( ! _ActivateFullscreenMode(-1, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE) )
+            {
+                TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
+                return -1;
+            }
+        }
+
+        _SetupMouseScaleAndOffset();
+    }
+    else
     {
         glfwTerminate();
         TRACELOG(LOG_WARNING, "GLFW: Failed to initialize Window");
@@ -1763,37 +1808,6 @@ int InitPlatform(void)
             glfwSwapInterval(1);
             TRACELOG(LOG_INFO, "DISPLAY: Trying to enable VSYNC");
         }
-
-        int fbWidth = CORE.Window.screen.width;
-        int fbHeight = CORE.Window.screen.height;
-
-        if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
-        {
-            // Framebuffer scaling should be activated with: glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE);
-    #if !defined(__APPLE__)
-            if ( glfwGetPlatform() != GLFW_PLATFORM_WAYLAND )
-            {
-                glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
-
-                // Screen scaling matrix is required in case desired screen area is different from display area
-                CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
-
-                // Mouse input scaling for the new screen size
-                SetMouseScale((float)CORE.Window.screen.width/fbWidth, (float)CORE.Window.screen.height/fbHeight);
-            }
-    #endif
-        }
-
-        CORE.Window.render.width = fbWidth;
-        CORE.Window.render.height = fbHeight;
-        CORE.Window.currentFbo.width = fbWidth;
-        CORE.Window.currentFbo.height = fbHeight;
-
-        TRACELOG(LOG_INFO, "DISPLAY: Device initialized successfully");
-        TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
-        TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
-        TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
-        TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
     }
     else
     {
@@ -1868,6 +1882,10 @@ int InitPlatform(void)
     CORE.Storage.basePath = GetWorkingDirectory();
     //----------------------------------------------------------------------------
 
+
+
+    //----------------------------------------------------------------------------
+
 #if defined(__NetBSD__)
     // Workaround for NetBSD
     char *glfwPlatform = "X11";
@@ -1886,11 +1904,6 @@ int InitPlatform(void)
     TRACELOG(LOG_INFO, "GLFW platform: %s", glfwPlatform);
     TRACELOG(LOG_INFO, "PLATFORM: DESKTOP (GLFW): Initialized successfully");
 
-    if ( CORE.Window.fullscreen )
-    {
-        // Toggle fullscreen mode on primary monitor :
-        _ActivateFullscreenMode(-1, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
-    }
 
     return 0;
 }
@@ -1930,6 +1943,13 @@ static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int fra
     // We have to rescale and offset the mouse coordinate system 
     // so that it always matches the offset and scale of the "screen" surface
 
+    _SetupMouseScaleAndOffset();
+
+    // NOTE: Postprocessing texture is not scaled to new size
+}
+
+static void _SetupMouseScaleAndOffset()
+{
 #if !defined(__APPLE__)
     if ( glfwGetPlatform() != GLFW_PLATFORM_WAYLAND )
     {
@@ -1942,8 +1962,6 @@ static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int fra
     float mouseOffsetX = -0.5f*CORE.Window.renderOffset.x;
     float mouseOffsetY = -0.5f*CORE.Window.renderOffset.y;
     SetMouseOffset( mouseOffsetX , mouseOffsetY );
-
-    // NOTE: Postprocessing texture is not scaled to new size
 }
 
 // GLFW3 Callback, called when the DPI of the monitor is updated
