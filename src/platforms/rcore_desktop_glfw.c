@@ -1758,17 +1758,18 @@ int InitPlatform(void)
 
         if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
         {
-            // NOTE: On APPLE and Wayland platforms system should manage window/input scaling and also framebuffer scaling.
             // Framebuffer scaling should be activated with: glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE);
-    #if !defined(__APPLE__) && !defined(_GLFW_WAYLAND)
-            glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
+    #if !defined(__APPLE__)
+            if ( glfwGetPlatform() != GLFW_PLATFORM_WAYLAND )
+            {
+                glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
 
-            // Screen scaling matrix is required in case desired screen area is different from display area
-            CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
+                // Screen scaling matrix is required in case desired screen area is different from display area
+                CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
 
-            // Mouse input scaling for the new screen size
-            // TODO FIXME does Wayland requires mouse scaling too ?
-            SetMouseScale((float)CORE.Window.screen.width/fbWidth, (float)CORE.Window.screen.height/fbHeight);
+                // Mouse input scaling for the new screen size
+                SetMouseScale((float)CORE.Window.screen.width/fbWidth, (float)CORE.Window.screen.height/fbHeight);
+            }
     #endif
         }
 
@@ -1906,8 +1907,6 @@ static void ErrorCallback(int error, const char *description)
 // NOTE: Window resizing and DPI scaling are not enabled by default.
 static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int frameBufferHeight)
 {
-    TRACELOG(LOG_INFO, "WindowSizeCallback: %d x %d", frameBufferWidth, frameBufferHeight);
-
     CORE.Window.currentFbo.width = frameBufferWidth;
     CORE.Window.currentFbo.height = frameBufferHeight;
 
@@ -1920,11 +1919,11 @@ static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int fra
     // NOTE: Postprocessing texture is not scaled to new size
 }
 
+// GLFW3 Callback, called when the DPI of the monitor is updated
 static void WindowContentScaleCallback(GLFWwindow *window, float scalex, float scaley)
 {
     // We only display a message.
-    // The actual update of `CORE.Window.screenScale` will occur in `WindowSizeCallback()`
-    // where all other updates happen (No need to scatter everything everywhere).
+    // The actual update of `CORE.Window.screenScale` will happen when `WindowSizeCallback()` is called.
     TRACELOG(LOG_INFO, "SYSTEM: the DPI scaling of the monitor was udpated to %f x %f", scalex, scaley );
 }
 
