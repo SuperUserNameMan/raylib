@@ -141,28 +141,64 @@ bool WindowShouldClose(void)
     else return true;
 }
 
-static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight) // TODO FIXME : the args are not even used in the original code !!
+// Local reimplementation of SetupFramebuffer()
+static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight)
 {
-    // TODO FIXME update clarification with new version of this function
-    // Let's clarify a little to avoid confusion ...
-    // We have one or several monitors on which our deskop environnement is displayed.
-    // Each monitor has its own display resolution.
-    // `InitWindow()` opens a window on one monitor.
-    // The window can be moved all over the deskop that speads itself over one or several monitors.
-    // The size of the display of the monitor on which the window is mainly displayed is in `CORE.Window.display`
-    // Raylib draws on a surface called "screen" whose size is in `CORE.Window.screen`
-    // In windowed mode, the size provided to `InitWindow()` is the size of this "screen".
-    // The window has a rendering surface called "framebuffer" on which is _rendered_ the "screen".
-    // The size of the framebuffer depends on the size of the window, and is in `CORE.Window.render`
-    // TODO HIGHDPI mode craps
+    // To avoid breaking backward compatibility and other platforms backends
+    // that rely on `rcore.c` implementations of `SetupFramebuffer()` and `SetupViewport()`
+    // this GLFW backend will use this customized `_SetupFramebuffer()` version instead.
+
+    // This version of `_SetupFramebuffer()` is meant to work with the unchanged `SetupViewport()`.
+
+    // Let's clarify a little to avoid further confusion ...
+
+    // We use these definitions :
+    // --`frameBuffer`             : size of the surface of the window in which Raylib is allowed to render.
+    //                               This is the frameBuffer that is cleared with `ClearBackground()`
+    // - `CORE.Window.display`     : size of the display resolution of the main monitor on which the window is located.
+    // - `CORE.Window.render`      : size of the viewport in which Raylib is allowed to draw. 
+    //                               The `render` VP may occupy the whole frameBuffer, or just a part of it.
+    // - `CORE.Window.renderOffset`: if the `render` VP is smaller than the frameBuffer, it can be centered.
+    // - `CORE.Window.screen`      : the "screen" is a 2D space that is rescaled to fit inside the render viewport.
+    // - `CORE.Window.screenScale` : scale of the "screen" so it fits inside the "render" viewport.
+
+    // +---[monitor]-------------------+
+    // | +----[display]--------------+ |
+    // | |                           | |
+    // | |  #[window]############    | |
+    // | |  |+-[frameBuffer]---+|    | |
+    // | |  ||  +-[render]--+  ||    | |
+    // | |  ||  |           |  ||    | |
+    // | |  ||  |  screen   |  ||    | |
+    // | |  ||  | (rescaled)|  ||    | |
+    // | |  ||  |___________|  ||    | |
+    // | |  ||_________________||    | |
+    // | |  +-------------------+    | |
+    // | |                           | |
+    // | +---------------------------+ |
+    // +-------------------------------+
+
+    // When `FLAG_RESCALE_CONTENT` is off (default) :
+    // - the size of `render` is always the same as the size of the frameBuffer
+    // - the size of `screen` is unscaled, and is thus the same as `render`
+    // - the size of `screen`, `render` are expressed in pixels
+    // - TODO take FLAG_WINDOW_HIGHDPI in consideration
+
+    // When `FLAG_RESCALE_CONTENT` is on :
+    // - the size of `render` is the size of `screen` rescaled to fit inside the frameBuffer
+    // - this means that `render` has the same aspect ratio as `screen`
+    // - the size of `screen` remains unchanged
+    // - the size of `render` is expressed in pixels
+    // - the size of `screen` is expressed in opengl 2D coordinate units
+    // - once rendered into the `render` viewport, a 'screen' space unit is equal to `CORE.Window.screenScale` pixels
+    // - TODO take FLAG_WINDOW_HIGHDPI in consideration
 
     // Some booleans to ease code reading :
 
-    bool weAreInWindowedMode = !CORE.Window.fullscreen;
     bool screenAndDisplayAreSameSize = (CORE.Window.screen.width == CORE.Window.display.width) && (CORE.Window.screen.height == CORE.Window.display.height);
     bool weDontWantToRescaleAndCenter = ! (CORE.Window.flags & FLAG_RESCALE_CONTENT);
 
-    // We only need rescaling and offseting if we're in fullscreen mode 
+    // We only need rescaling and offseting we want
     // and if the sizes of screen and display differ :
 
     if ( screenAndDisplayAreSameSize || weDontWantToRescaleAndCenter )
@@ -195,68 +231,55 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight) // TO
         return;
     }
 
-    // We are here because we are in fullscreen mode.
-
-    // When switching to fullscreen mode, the original code tried to rescale and offset the screen so it fits centered
-    // into the render surface. We're going to do the same, except that it should work correctly (hopefully).
-
-    // In fullscreen mode, there is no difference betweeen the size of the render,
-    // the size of the framebuffer and the size of the display.
-
-    // In fullscreen mode, we want to try to keep the aspect ratio of the screen surface.
-    // So we have to rescale the drawings (screenScale) to the screen, and offset the screen surface to 
-    // center it in the render surface.
-    // The clippings will be done by the viewport.
-
-    // Some more booleans for code readability :
+    // We are here because want to rescale and center the `screen` into the frameBuffer.
+    // Either "screen" is bigger than the frameBuffer and we need to downscale it,
+    // either it is smaller and we need to upscale it, but that's the same algorithm.
+    // Only the TRACELOG message changes :
 
     bool screenIsBiggerThanDisplay = (CORE.Window.screen.width > frameBufferWidth) || (CORE.Window.screen.height > frameBufferHeight);
     bool screenIsSmallerThanDisplay = !screenIsBiggerThanDisplay;
     
-    // The algorithm to downscale and upscale the screen size is the same.
-    // Only the message below changes :
-
     if ( screenIsBiggerThanDisplay )
     {
-        TRACELOG(LOG_WARNING, "DISPLAY: Downscaling required: Screen size (%ix%i) is bigger than display size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, CORE.Window.display.width, CORE.Window.display.height);
+        TRACELOG(LOG_WARNING, "DISPLAY: Downscaling required: Screen size (%ix%i) is bigger than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
     }
     else
     if ( screenIsSmallerThanDisplay )
     {
-        TRACELOG(LOG_WARNING, "DISPLAY: Upscaling required: Screen size (%ix%i) is smaller than display size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, CORE.Window.display.width, CORE.Window.display.height);
+        TRACELOG(LOG_WARNING, "DISPLAY: Upscaling required: Screen size (%ix%i) is smaller than frameBuffer size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, frameBufferWidth, frameBufferHeight);
     }
 
     // Aspect ratio of each surface :
 
-    float displayAspectRatio = (float)CORE.Window.display.width/(float)CORE.Window.display.height;
+    float frameBufferAspectRatio = (float)frameBufferWidth/(float)frameBufferHeight;
     float screenAspectRatio = (float)CORE.Window.screen.width/(float)CORE.Window.screen.height;
 
-    // The screen's surface is bigger or smaller than the display's.
-    // We need to rescale the screen's surface so it fits into the display's surface.
+    // We need to scale "render" proportionaly to the size of "screen"
+    // so "render" fits into frameBuffer with the same aspect ratio than "screen".
 
     float scaleRatio = 1.0f;
 
-    if ( screenAspectRatio > displayAspectRatio )
+    if ( screenAspectRatio > frameBufferAspectRatio )
     {
-        // Example : screen is 1600x900, and render/display/frameBuffer are 800x600
-        // Result  : 800x450
+        // Example : screen is 1600x900, and frameBuffer is 800x600
+        //           render should be : 800x450
         // (we compute directy using integers to avoid float conversions and roundings)
 
         CORE.Window.render.width = frameBufferWidth ;
         CORE.Window.render.height = CORE.Window.screen.height*frameBufferWidth/CORE.Window.screen.width;
 
         CORE.Window.renderOffset.x = 0;
-        CORE.Window.renderOffset.y = ( frameBufferHeight - CORE.Window.render.height );
+        CORE.Window.renderOffset.y = (frameBufferHeight - CORE.Window.render.height);
 
-        // If the screen's aspect ratio is larger than the display's, (like 16/9 versus 4/3)
+        // If the screen's aspect ratio is larger than the frameBuffer's, (like 16/9 versus 4/3)
         // this means the screen has to be rescaled by the width ratio.
 
-        scaleRatio = (float)CORE.Window.render.width/(float)CORE.Window.screen.width;
+        scaleRatio = (float)frameBufferWidth/(float)CORE.Window.screen.width;
     }
     else
     {
-        // Example : screen is 800x600, and render/display/frameBuffer is 1600x900
-        // Result  : 1200x900
+        // Example : screen is 800x600, and frameBuffer is 1600x900
+        //           render should be : 1200x900
 
         CORE.Window.render.width = CORE.Window.screen.width*frameBufferHeight/CORE.Window.screen.height;
         CORE.Window.render.height = frameBufferHeight;
@@ -264,13 +287,14 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight) // TO
         CORE.Window.renderOffset.x = ( frameBufferWidth - CORE.Window.render.width );
         CORE.Window.renderOffset.y = 0;
 
-        // If the screen's aspect ratio is larger than the display's, (like 4/3 versus 16/9)
+        // If the screen's aspect ratio is larger than the frameBuffer's, (like 4/3 versus 16/9)
         // this means the screen has to be rescaled by the height ratio.
 
-        scaleRatio = (float)CORE.Window.render.height/(float)CORE.Window.screen.height;
+        scaleRatio = (float)frameBufferHeight/(float)CORE.Window.screen.height;
     }
 
-    // Let's update the scale at which the drawings will occurs on the screen surface :
+    // Let's update the scale at which the drawings will occurs on the screen surface 
+    // once rendered into the "render" viewport :
 
     CORE.Window.screenScale = MatrixScale(scaleRatio, scaleRatio, 1.0f);
 
@@ -278,139 +302,6 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight) // TO
 }
 
 
-static void _SetupFramebuffer_00(int frameBufferWidth, int frameBufferHeight) // TODO FIXME : the args are not even used in the original code !!
-{
-    // Let's clarify a little to avoid confusion ...
-    // We have one or several monitors on which our deskop environnement is displayed.
-    // Each monitor has its own display resolution.
-    // `InitWindow()` opens a window on one monitor.
-    // The window can be moved all over the deskop that speads itself over one or several monitors.
-    // The size of the display of the monitor on which the window is mainly displayed is in `CORE.Window.display`
-    // Raylib draws on a surface called "screen" whose size is in `CORE.Window.screen`
-    // In windowed mode, the size provided to `InitWindow()` is the size of this "screen".
-    // The window has a rendering surface called "framebuffer" on which is _rendered_ the "screen".
-    // The size of the framebuffer depends on the size of the window, and is in `CORE.Window.render`
-    // TODO HIGHDPI mode craps
-
-    // Some booleans to ease code reading :
-
-    bool weAreInWindowedMode = !CORE.Window.fullscreen;
-    bool screenAndDisplayAreSameSize = (CORE.Window.screen.width == CORE.Window.display.width) && (CORE.Window.screen.height == CORE.Window.display.height);
-
-    // We only need rescaling and offseting if we're in fullscreen mode 
-    // and if the sizes of screen and display differ :
-
-    if ( weAreInWindowedMode || screenAndDisplayAreSameSize )
-    {
-        // In windowed mode, there is no difference between the size of render
-        // and the size of the window's framebuffer :
-
-        CORE.Window.render.width = frameBufferWidth;
-        CORE.Window.render.height = frameBufferHeight;
-
-        // And if FLAG_WINDOW_HIGHDPI is disabled, there is no difference betweeen 
-        // the size of the screen and the size of the render surfaces :
-
-        CORE.Window.screen = CORE.Window.render;
-
-        // TODO FLAG_WINDOW_HIGHDPI support
-
-        // We only need to rescale the rendering of the screen surface 
-        // according to the DPI if FLAG_WINDOW_HIGHDPI is active : TODO
-        
-        CORE.Window.screenScale = MatrixIdentity(); // TODO FIXME interference with DPI scale from GLFW cb ?
-
-        // And no offset is required :
-
-        CORE.Window.renderOffset.x = 0;
-        CORE.Window.renderOffset.y = 0;
-
-        // We can leave now :
-
-        return;
-    }
-
-    // We are here because we are in fullscreen mode.
-
-    // When switching to fullscreen mode, the original code tried to rescale and offset the screen so it fits centered
-    // into the render surface. We're going to do the same, except that it should work correctly (hopefully).
-
-    // In fullscreen mode, there is no difference betweeen the size of the render,
-    // the size of the framebuffer and the size of the display.
-
-    // In fullscreen mode, we want to try to keep the aspect ratio of the screen surface.
-    // So we have to rescale the drawings (screenScale) to the screen, and offset the screen surface to 
-    // center it in the render surface.
-    // The clippings will be done by the viewport.
-
-    // Some more booleans for code readability :
-
-    bool screenIsBiggerThanDisplay = (CORE.Window.screen.width > frameBufferWidth) || (CORE.Window.screen.height > frameBufferHeight);
-    bool screenIsSmallerThanDisplay = !screenIsBiggerThanDisplay;
-    
-    // The algorithm to downscale and upscale the screen size is the same.
-    // Only the message below changes :
-
-    if ( screenIsBiggerThanDisplay )
-    {
-        TRACELOG(LOG_WARNING, "DISPLAY: Downscaling required: Screen size (%ix%i) is bigger than display size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, CORE.Window.display.width, CORE.Window.display.height);
-    }
-    else
-    if ( screenIsSmallerThanDisplay )
-    {
-        TRACELOG(LOG_WARNING, "DISPLAY: Upscaling required: Screen size (%ix%i) is smaller than display size (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height, CORE.Window.display.width, CORE.Window.display.height);
-    }
-
-    // Aspect ratio of each surface :
-
-    float displayAspectRatio = (float)CORE.Window.display.width/(float)CORE.Window.display.height;
-    float screenAspectRatio = (float)CORE.Window.screen.width/(float)CORE.Window.screen.height;
-
-    // The screen's surface is bigger or smaller than the display's.
-    // We need to rescale the screen's surface so it fits into the display's surface.
-
-    float scaleRatio;
-
-    if ( screenAspectRatio > displayAspectRatio )
-    {
-        // If the screen's aspect ratio is larger than the display's, (like 16/9 versus 4/3)
-        // this means the screen has to be rescaled by the width ratio.
-
-        scaleRatio = (float)frameBufferWidth/(float)CORE.Window.screen.width;
-
-        // Example : screen is 1600x900, and render/display/frameBuffer are 800x600
-        // Result  : 800x450
-        // (we compute directy using integers to avoid float conversions and roundings)
-
-        CORE.Window.screen.height = CORE.Window.screen.height*frameBufferWidth/CORE.Window.screen.width;
-        CORE.Window.screen.width = frameBufferWidth ;
-
-        CORE.Window.renderOffset.x = 0;
-        CORE.Window.renderOffset.y = ( frameBufferHeight - CORE.Window.screen.height );
-    }
-    else
-    {
-        // If the screen's aspect ratio is larger than the display's, (like 4/3 versus 16/9)
-        // this means the screen has to be rescaled by the height ratio.
-
-        scaleRatio = (float)frameBufferHeight/(float)CORE.Window.screen.height;
-
-        // Example : screen is 800x600, and render/display/frameBuffer is 1600x900
-        // Result  : 1200x900
-
-        CORE.Window.screen.width = CORE.Window.screen.width*frameBufferHeight/CORE.Window.screen.height;
-        CORE.Window.screen.height = frameBufferHeight;
-
-        CORE.Window.renderOffset.x = ( frameBufferWidth - CORE.Window.screen.width );
-        CORE.Window.renderOffset.y = 0;
-    }
-
-    // Let's update the scale at which the drawings will occurs on the screen surface :
-
-    //CORE.Window.screenScale = MatrixScale(scaleRatio, scaleRatio, 1.0f);
-
-    TRACELOG(LOG_WARNING, "DISPLAY: Rescale matrix generated, content will be rendered at (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height);
-}
 
 static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate)
 {
@@ -622,7 +513,8 @@ void ToggleBorderlessWindowed(void)
 
                 // GLFW will call WindowSizeCallback too late after EndDrawing()
                 // Let's call it already so the user can access updated values without further delay :
-                WindowSizeCallback(platform.handle, mode->width, mode->height);
+                //WindowSizeCallback(platform.handle, mode->width, mode->height);
+                _SetupFramebuffer( mode->width , mode->height ); // TODO not to confuse with SetupFramebuffer() from rcore
 
                 // Refocus window
                 glfwFocusWindow(platform.handle);
@@ -641,7 +533,8 @@ void ToggleBorderlessWindowed(void)
 
                 // GLFW will call WindowSizeCallback too late after EndDrawing()
                 // Let's call it already so the user can access updated values without further delay :
-                WindowSizeCallback(platform.handle, prevWidth, prevHeight);
+//                WindowSizeCallback(platform.handle, prevWidth, prevHeight);
+                _SetupFramebuffer( prevWidth , prevHeight ); // TODO not to confuse with SetupFramebuffer() from rcore
 
                 // Refocus window
                 glfwFocusWindow(platform.handle);
@@ -1704,7 +1597,11 @@ int InitPlatform(void)
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE); // Only has effect on Windows and X11
         glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); // Only has effect on MacOS and Wayland
     }
-    else glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
+    else 
+    {
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
+        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_FALSE);
+    }
 
     // Mouse passthrough
     if ((CORE.Window.flags & FLAG_WINDOW_MOUSE_PASSTHROUGH) > 0) glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
@@ -1997,43 +1894,57 @@ static void ErrorCallback(int error, const char *description)
 
 // GLFW3 WindowSize Callback, runs when window is resizedLastFrame
 // NOTE: Window resizing not allowed by default
-static void WindowSizeCallback(GLFWwindow *window, int width, int height)
+static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int frameBufferHeight)
 {
-    TRACELOG(LOG_INFO, "WindowSizeCallback: %d x %d", width, height);
+    TRACELOG(LOG_INFO, "WindowSizeCallback: %d x %d", frameBufferWidth, frameBufferHeight);
 
-    CORE.Window.currentFbo.width = width;
-    CORE.Window.currentFbo.height = height;
+    CORE.Window.currentFbo.width = frameBufferWidth;
+    CORE.Window.currentFbo.height = frameBufferHeight;
     CORE.Window.resizedLastFrame = true;
 
     bool weWantToRescaleAndCenter = (CORE.Window.flags & FLAG_RESCALE_CONTENT);
 
     if ( weWantToRescaleAndCenter )
     {
-        // Fullscreen mode need render size because
-        // the screen surface will be resized
-        // into it TODO FIXME finishe explanation
+        // We're here because we want the "screen" surface inside which 
+        // we will draw to be rendered rescaled and centered inside
+        // the available frameBuffer of the window.
+        // The size of the viewport is the size at which we want to "render" 
+        // the "screen".
+        // NOTES : 
+        // - If the rescaled size of the "screen" surface is smaller than 
+        // the frameBuffer space, there will be empty borders on each sides
+        // of the viewport.
+        // - The color of theses borders can be set using `ClearBackground()`.
+        // - The offset of the viewport is in `CORE.Window.renderOffset`.
+        // - The scale of the screen is in `CORE.Window.screenScale`.
+        // - These offset and scale are computed by `_SetupFramebuffer()`.
+
+        _SetupFramebuffer(frameBufferWidth, frameBufferHeight);
         SetupViewport(CORE.Window.render.width, CORE.Window.render.height);
         return;
     }
 
-    // Reset viewport and projection matrix for new window size
-    SetupViewport(width, height);
+    // We're here because we want the viewport to expand to the whole size
+    // of the window's framebuffer :
+
+    SetupViewport(frameBufferWidth, frameBufferHeight);
 
 #if defined(__APPLE__) || defined(_GLFW_WAYLAND)
-    CORE.Window.screen.width = width;
-    CORE.Window.screen.height = height;
+    CORE.Window.screen.width = frameBufferWidth;
+    CORE.Window.screen.height = frameBufferHeight;
 #else
     if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
     {
         Vector2 windowScaleDPI = GetWindowScaleDPI();
 
-        CORE.Window.screen.width = (unsigned int)ceilf(width/windowScaleDPI.x);
-        CORE.Window.screen.height = (unsigned int)ceilf(height/windowScaleDPI.y);
+        CORE.Window.screen.width = (unsigned int)ceilf(frameBufferWidth/windowScaleDPI.x);
+        CORE.Window.screen.height = (unsigned int)ceilf(frameBufferHeight/windowScaleDPI.y);
     }
     else
     {
-        CORE.Window.screen.width = width;
-        CORE.Window.screen.height = height;
+        CORE.Window.screen.width = frameBufferWidth;
+        CORE.Window.screen.height = frameBufferHeight;
     }
 #endif
     // NOTE: Postprocessing texture is not scaled to new size
