@@ -548,8 +548,8 @@ typedef enum {
     FLAG_MSAA_4X_HINT             = 0x00000020,   // Set to try enabling MSAA 4X
     FLAG_INTERLACED_HINT          = 0x00010000,   // Set to try enabling interlaced video format (for V3D)
 
-    // Experimental flags :
-    FLAG_RESCALE_CONTENT          = 0x10000000    // (Experimental) Set to rescale the content of the window when the window is resized or fullscreened
+    // Experimental WIP flags :
+    FLAG_RESCALE_CONTENT          = 0x10000000    // (GLFW desktop platform) Set to rescale the content of the window when the window is resized or fullscreened
 } ConfigFlags;
 
 // Trace log level
