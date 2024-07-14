@@ -1708,11 +1708,11 @@ int InitPlatform(void)
         CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
         CORE.Window.fullscreen = false ; // We can't have both
     }
-
-    // If we are windowed fullscreen, ensures that window does not minimize when focus is lost.
-    // This hinting code will not work if the user already specified the correct monitor dimensions;
-    // at this point we don't know the monitor's dimensions. (Though, how did the user then?)
-//TODO    if (requestWindowedFullscreen) glfwWindowHint(GLFW_AUTO_ICONIFY, 0);
+  
+    // By default, when the fullscreen window loses focus, GLFW iconifies it and restores the desktop monitor resolution.
+    // This default bahavior can be emulated user's side with a simple `if ( ! IsWindowFocused() ) MinimizeWindow();`
+    // So we disable it by default and let the user decides by themself.
+    glfwWindowHint( GLFW_AUTO_ICONIFY , GLFW_FALSE );
 
     // Default to at least one pixel in size, as creation with a zero dimension is not allowed.
     int creationWidth = CORE.Window.screen.width > 0 ? CORE.Window.screen.width : 1;
