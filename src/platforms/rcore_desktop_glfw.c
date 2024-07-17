@@ -1399,7 +1399,7 @@ int InitPlatform(void)
     // For the sake of code readability, we're going to establish a boolean vocabulary :
 
     bool requestWindowHDPI          = (CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0;
-    bool requestRescaledContent     = (CORE.Window.flags & FLAG_RESCALE_CONTENT) > 0;
+    bool requestRescaledContent     = (CORE.Window.flags & FLAG_RESCALE_CONTENT) > 0; //!\ If enabled, this flag breaks backward compatibility
 
     bool requestVsync               = (CORE.Window.flags & FLAG_VSYNC_HINT) > 0;
 
@@ -1421,21 +1421,26 @@ int InitPlatform(void)
     {
         TRACELOG(LOG_WARNING, "DISPLAY: both fullscreen modes were requested. Ignoring `FLAG_FULLSCREEN_MODE`.");
 
-        requestHardwareFullscreen = false ;
+        requestHardwareFullscreen = false ; // update the boolean vocabulary 
 
-        // And let's not forget the update the real flags :
+        // And let's not forget to update the real flags :
         CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
         CORE.Window.fullscreen = false ;
     }
 
-    // By default, when a fullscreen window looses focus, GLFW iconifies it and restores the desktop monitor resolution.
+    // By default, when a fullscreen window loses focus, GLFW iconifies it and restores the desktop monitor resolution.
     // This default behavior can be emulated on user's side with a simple code : `if ( ! IsWindowFocused() ) MinimizeWindow();`
-    // So we disable this GLFW default behavior and let the user decides by themself the behavior of their program :
+    // So we disable this GLFW default behavior and let the user decides by themself the behavior of their program,
+    // because they may want their fullscreen program to remain visible while interacting with other application on 
+    // a secondary monitor.
 
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
-    // Even if a fullscreen mode is requested, for now we will just open a windowed window 
-    // with a minimal size and we will resize it or toggle it fullscreen later.
+    // Even if a fullscreen mode is requested, for now we will just open a windowed window with a minimal size. 
+    // Next, this initial window will be resized and positionned according to what it should be restored to if the user toggles from fullscreen.
+    // Once the window fully ready, we will toggle the requested fullscreen mode.
+    // NOTE : this means the hardware fullscreen will occurs on the same display than the window will be displayed on.
+    // TODO : make it possible to request a hardware fullscreen resolution bigger than current monitor display resolution.
 
     int frameBufferWidth  = 100 ;
     int frameBufferHeight = 100 ;
@@ -1455,8 +1460,8 @@ int InitPlatform(void)
 
     // Now that the window is created, we can determine on which monitor it was assigned to
     // and derive other missing metrics from the configuration of the display :
-    // NOTE : we can't use glfwGetWindowMonitor() because it only works if the window is 
-    // already in hardware fullscreen mode, otherwise it returns NULL.
+    // NOTE : we can't use glfwGetWindowMonitor() directy because it only works if the window is 
+    // already in hardware fullscreen mode, otherwise it returns NULL. So we use `GetCurrentMonitor()`.
 
     int monitorCount = 0;
     int monitorIndex = GetCurrentMonitor();
@@ -1487,15 +1492,20 @@ int InitPlatform(void)
     CORE.Window.display.width = mode->width;
     CORE.Window.display.height = mode->height;
 
-    if (invalidWindowSizeRequested || requestBorderlessWindowed)
+    if (invalidWindowSizeRequested) 
     {
-        // If we implicitely or explicitely requested a windowed fullscreen mode
-        // we couldn't know the size of the display :
+        // If the user requested an invalid screen resolution
+        // it may be because they did not know the size of the display. 
+        // Also, they may provide only an invalid width or height. 
+        // For instance, `InitWindow(800,0)` could be interpreted as a desire to automatically set the
+        // height of the window to the height of the display.
+        // So we fill the blanks with the now known display dimensions :
 
-        CORE.Window.screen.width = mode->width;
-        CORE.Window.screen.height = mode->height;
+        // TODO : NOTE the expected bahavior should be discussed an formalized 
+
+        if ( CORE.Window.screen.width <= 0 ) CORE.Window.screen.width = mode->width;
+        if ( CORE.Window.screen.height <= 0 ) CORE.Window.screen.height = mode->height;
     }
-
 
     frameBufferWidth = CORE.Window.screen.width;
     frameBufferHeight = CORE.Window.screen.height;
@@ -1503,15 +1513,17 @@ int InitPlatform(void)
     CORE.Window.currentFbo.width = frameBufferWidth;
     CORE.Window.currentFbo.height = frameBufferHeight;
 
-    // If the user requestedHDPI scaling, we must update the size of the frameBuffer.
+    // If the user requestedHDPI scaling, we must update the size of the initial frameBuffer.
 
     if (requestWindowHDPI)
     {
+
         float dpiScaleX, dpiScaleY;
         glfwGetWindowContentScale(platform.handle, &dpiScaleX, &dpiScaleY);
 
-        // TODO : take `__APPLE__` and Wayland special case into account.
-        // TODO : take `FLAG_RESCALE_CONTENT` into account.
+        // TODO : take `__APPLE__` special case into account. @SoloByte mission (don't forget to give a look at `_SetupFramebuffer()` just in case the special case is already managed there)
+        // TODO : take Wayland special case into account.  (don't forget to give a look at `_SetupFramebuffer()` just in case the special case is already managed there)
+        // TODO : take `FLAG_RESCALE_CONTENT` into account ? (don't forget to give a look at `_SetupFramebuffer()` just in case the special case is
 
         frameBufferWidth  = (int)roundf((float)frameBufferWidth*dpiScaleX);
         frameBufferHeight = (int)roundf((float)frameBufferHeight*dpiScaleY);
@@ -1519,7 +1531,7 @@ int InitPlatform(void)
 
     // Recompute all metrics using known `CORE.Window.screen` and frameBuffer sizes :
 
-    _SetupFramebuffer(frameBufferWidth, frameBufferHeight, false);
+    _SetupFramebuffer(frameBufferWidth, frameBufferHeight, false); //!\ We're still in windowed mode for now, so the 3rd argument is `false`
 
     // Now that we have the correct frameBuffer size, we can resize the window :
 
