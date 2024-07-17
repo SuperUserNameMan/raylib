@@ -1460,7 +1460,7 @@ int InitPlatform(void)
 
     // Now that the window is created, we can determine on which monitor it was assigned to
     // and derive other missing metrics from the configuration of the display :
-    // NOTE : we can't use glfwGetWindowMonitor() directy because it only works if the window is 
+    // NOTE : we can't use glfwGetWindowMonitor() directly because it only works if the window is 
     // already in hardware fullscreen mode, otherwise it returns NULL. So we use `GetCurrentMonitor()`.
 
     int monitorCount = 0;
@@ -1581,7 +1581,7 @@ int InitPlatform(void)
         return -1;
     }
 
-    // From here, we should have a working windowed window with an opengl context :
+    // From here, we should have a working windowed window with a working OpenGL context :
 
     CORE.Window.ready = true;
 
@@ -1605,6 +1605,7 @@ int InitPlatform(void)
 
     if ( requestWindowedWindow )
     {
+        // Nothing to do here
     }
     else
     if ( requestBorderlessWindowed )
@@ -1614,16 +1615,22 @@ int InitPlatform(void)
     else
     if ( requestHardwareFullscreen )
     {
+        // We don't use `ToggleFullscreen()` directly because `CORE.Window.fullscreen` is already set to `true`,
+        // and `ToggleFullscreen()` would think it is already in fullscreen mode.
+
         bool result = _ActivateFullscreenMode(monitorIndex, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
         if ( result == false )
         {
             TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
-            return -1;
+            // We don't close the window, nor terminate GLFW, not interrupt the paltform intialization because it is just a warning.
+            // The user should still be able to use and access the window in windowed mode.
+            // TODO : see with @raysan5 how to formalize the returned error codes.
         }
     }
 
-
-    // The mouse position returned by Raylib's API needs to be rescaled according the viewport :
+    // The mouse position returned by Raylib's API needs to be rescaled according to the current viewport :
+    // NOTE : we do it here manually because the GLFW callback are not set yet. Later, once all the GLFW callback will be set,
+    //        all the resizing and rescaling callings will be automated in `WindowSizeCallback()` and `WindowContentScaleCallback()`
 
     _SetupMouseScaleAndOffset();
 
@@ -1633,6 +1640,7 @@ int InitPlatform(void)
     // but for the sake of backward compatibility, we leave this option available here :
 
     if ((CORE.Window.flags & FLAG_WINDOW_MINIMIZED) > 0) MinimizeWindow();
+
 
 
     // Complete platform intialization :
@@ -1933,7 +1941,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
     {
         // Example : screen is 1600x900, and frameBuffer is 800x600
         //           render should be : 800x450
-        // (we compute directy using integers to avoid float conversions and roundings)
+        // (we compute directly using integers to avoid float conversions and roundings)
 
         CORE.Window.render.width = frameBufferWidth ;
         CORE.Window.render.height = CORE.Window.screen.height*frameBufferWidth/CORE.Window.screen.width;
