@@ -2012,7 +2012,7 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
 
     if (monitor == NULL)
     {
-        TRACELOG(LOG_WARNING, "GLFW: failed to get requested monitor");
+        TRACELOG(LOG_WARNING, "DISPLAY: GLFW failed to get requested monitor.");
 
         // Here we don't know if the user is already in fullscreen mode or if the function is called 
         // from `InitPlatform()` which would already have `CORE.Window.fullscreen` set to `true` when
@@ -2027,12 +2027,20 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
     // Store previous window position and size (in case we exit fullscreen)
     glfwGetWindowPos(platform.handle, &CORE.Window.previousPosition.x, &CORE.Window.previousPosition.y);
 
-    // Because we might be rescaling the "screen" when rendering it
-    // We need to remember the size the "render" viewport :
+    // If `FLAG_RESCALE_CONTENT` is enabled, we might be rescaling the "screen" when rendering it.
+    // So we need to remember the size the "render" viewport, not the size of the screen.
+    // And anyway, if `FLAG_RESCALE_CONTENT` is disabled (backward compatibility mode), the hardware fullscreen
+    // mode, the size of the "render" is the same as the "screen" and also the same as the window's frameBuffer.
+    // THe `FLAG_WINDOW_HIGHDPI` should not interfere, because it is ignored in hardware fullscreen mode.
+
+    // TODO : test __APPLE__ special case ? @SoloByte mission
+    // TODO : test Wayland spacial case ?
+
     CORE.Window.previousScreen = CORE.Window.render; // <== /!\ RENDER, not screen. This is not a bug.
 
 
-    // Find a video resolution that best matches our desired resolution :
+    // Let's find a video mode that best matches our desired fullscreen mode :
+
     const GLFWvidmode *mode = NULL ; 
 
     if ( desiredWidth > 0 && desiredHeight > 0 )
@@ -2044,9 +2052,9 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
         {
             if ( desiredRefreshRate == GLFW_DONT_CARE || desiredRefreshRate != modes[i].refreshRate )
             {
-                if ((unsigned int)modes[i].width >= desiredWidth)
+                if (modes[i].width >= desiredWidth)
                 {
-                    if ((unsigned int)modes[i].height >= desiredHeight)
+                    if (modes[i].height >= desiredHeight)
                     {
                         mode = &modes[i];
                         break;
@@ -2056,30 +2064,49 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
         }
     }
 
+    // If we failed to find an appropriate video mode, we default to the current 
+    // display mode of the monitor associated to the window :
+
     if ( mode == NULL )
     {
         mode = glfwGetVideoMode(monitor);
     }
 
-    if ( desiredWidth != mode->width || desiredHeight != mode->height || desiredRefreshRate != mode->refreshRate )
+    // Leave a tracelog of our final decision :
+
+    if ((desiredWidth != mode->width) || (desiredHeight != mode->height) || (desiredRefreshRate != mode->refreshRate))
     {
-        TRACELOG(LOG_WARNING, "SYSTEM: Closest fullscreen videomode: %i x %i @ %i Hz", mode->width, mode->height, mode->refreshRate );
+        TRACELOG(LOG_WARNING, "DISPLAY: Closest fullscreen videomode: %i x %i @ %i Hz", mode->width, mode->height, mode->refreshRate);
     }
 
-    // Update metrics :
-    CORE.Window.display.width = mode->width;
-    CORE.Window.display.height = mode->height;
-
-    // Update fullscreen indicators :
-    CORE.Window.fullscreen = true;
-    CORE.Window.flags |= FLAG_FULLSCREEN_MODE;
-
+    // Activate the fullscreen mode :
 
     glfwSetWindowMonitor(platform.handle, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
 
-    // TODO test success
+    const char *errorMessage;
+    int result = glfwGetError(&errorMessage);
 
-    _SetupFramebuffer( mode->width , mode->height, true ); 
+    if ( result !== GLFW_NO_ERROR )
+    {
+        TRACELOG(LOG_ERROR, "DISPLAY: GLFW failed to activate requested fullscreen mode.");
+
+        // There is nothing more to do. Just leave the window where it is.
+        return false;
+    }
+
+    // Now that the fullscreen mode is activated with success, we can update our metrics :
+
+    CORE.Window.display.width = mode->width;
+    CORE.Window.display.height = mode->height;
+
+    _SetupFramebuffer(mode->width, mode->height, true); 
+
+    // Update fullscreen indicators :
+
+    CORE.Window.fullscreen = true;
+    CORE.Window.flags |= FLAG_FULLSCREEN_MODE;
+
+    // And we're done !
 
     TRACELOG(LOG_INFO, "DISPLAY: Fullscreen mode initialized successfully");
     TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
