@@ -1498,14 +1498,18 @@ int InitPlatform(void)
         // it may be because they did not know the size of the display. 
         // Also, they may provide only an invalid width or height. 
         // For instance, `InitWindow(800,0)` could be interpreted as a desire to automatically set the
-        // height of the window to the height of the display.
+        // height of the window the same as the height of the display.
         // So we fill the blanks with the now known display dimensions :
 
-        // TODO : NOTE the expected bahavior should be discussed an formalized 
+        // TODO : NOTE the expected bahavior should be discussed an formalized with the community or the maintainer, 
+        // because it could also be interpreted as the desire to set a windowed window with a height or width same as
+        // the available desktop area.
 
         if ( CORE.Window.screen.width <= 0 ) CORE.Window.screen.width = mode->width;
         if ( CORE.Window.screen.height <= 0 ) CORE.Window.screen.height = mode->height;
     }
+
+    // If the user did not requestWindowHDPI, the size of the frameBuffer is the same as the requested screen size :
 
     frameBufferWidth = CORE.Window.screen.width;
     frameBufferHeight = CORE.Window.screen.height;
@@ -1513,7 +1517,7 @@ int InitPlatform(void)
     CORE.Window.currentFbo.width = frameBufferWidth;
     CORE.Window.currentFbo.height = frameBufferHeight;
 
-    // If the user requestedHDPI scaling, we must update the size of the initial frameBuffer.
+    // If the user requestWindowHDPI scaling, we must update the size of the initial frameBuffer.
 
     if (requestWindowHDPI)
     {
@@ -1529,20 +1533,20 @@ int InitPlatform(void)
         frameBufferHeight = (int)roundf((float)frameBufferHeight*dpiScaleY);
     }
 
-    // Recompute all metrics using known `CORE.Window.screen` and frameBuffer sizes :
-
-    _SetupFramebuffer(frameBufferWidth, frameBufferHeight, false); //!\ We're still in windowed mode for now, so the 3rd argument is `false`
-
     // Now that we have the correct frameBuffer size, we can resize the window :
 
     glfwSetWindowSize(platform.handle, frameBufferWidth, frameBufferHeight);
 
+    // We are also ready to recompute all the involved metrics using known `CORE.Window.screen` and frameBuffer sizes :
+
+    _SetupFramebuffer(frameBufferWidth, frameBufferHeight, false); //!\ We're still in windowed mode for now, so the 3rd argument is `false`
+
     // Even if the user requested a fullscreen mode, we're still in windowed mode for now.
     // We will toggle to the requested fullscreen mode once we will be done setting
-    // the window as it should be displayed if the user decide to deactivate the fullscreen
+    // the window as it should be restored if the user decide to leave the fullscreen
     // mode afterward.
 
-    // So we try to center it on the desktop :
+    // So let's try to center it on the desktop :
 
     int monitorX = 0;
     int monitorY = 0;
@@ -1557,17 +1561,23 @@ int InitPlatform(void)
     if (posX < monitorX) posX = monitorX;
     if (posY < monitorY) posY = monitorY;
 
-    glfwSetWindowPos(platform.handle, posX, posY);  // NOTE : This function sets the position of the upper-left 
-                                                    //        corner of the content area (aka the "frameBuffer")
+    glfwSetWindowPos(platform.handle, posX, posY);  //!\ NOTE : This function sets the position of the upper-left corner 
+                                                    //          of the content area (aka the "frameBuffer") and not the 
+                                                    //          upper-left corner of the window's decoration. 
+                                                    //          This means that the desktop manager or GLFW might not be
+                                                    //          able to fullfil this request and might change the position.
 
-    // As our windowed window is almost ready, we can associate the opengl context to it :
+    // As our windowed window is almost ready, we can associate the OpenGL context to it :
 
     glfwMakeContextCurrent(platform.handle); // NOTE : from here, we must `glfwDestroyWindow()` before any `glfwTerminate()`
+
     result = glfwGetError(NULL);
 
     if (result != GLFW_NO_ERROR)
     {
         TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
+        glfwDestroyWindow(platform.handle);
+        glfwTerminate();
         return -1;
     }
 
