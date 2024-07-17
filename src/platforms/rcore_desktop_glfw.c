@@ -207,6 +207,7 @@ void ToggleBorderlessWindowed(void)
             TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
             TRACELOG(LOG_INFO, "    > Screen scale: %f x %f", CORE.Window.screenScale.m0, CORE.Window.screenScale.m5);
             TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
+            
             if (!IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE))
             {
                 // Store screen position and size :
@@ -1634,8 +1635,9 @@ int InitPlatform(void)
     // TODO FIXME : find a way to disable this behavior using a GLFW ?
     // TODO FIXME : find a way to disable this behavior using a Win32 API call ?
 
-    // We enable the callback just to help the programmer notice
-    // the change of scale that may lead them to this instructive comment.
+    // We enable the callback just to help the programmer notice the TRACELOG
+    // triggered by the change of scale, which may lead them to this instructive
+    // comment.
     // NOTE : WindowContentScaleCallback() is not expected to do anything
     // beside triggering a TRACELOG.
 
@@ -1692,18 +1694,24 @@ int InitPlatform(void)
 #endif
 
     //
-    // Activate fullscreen mode if requested
+    // Activate fullscreen mode if it was requested
     //----------------------------------------------------------------------------
 
     // Now that we have our callbacks ready, we can safely rely on them to apply the appropriate 
 
     if (requestWindowedWindow)
     {
+        // We need to call the resize callback at least once
         WindowSizeCallback(platform.handle, frameBufferWidth, frameBufferHeight);
     }
     else
     if (requestBorderlessWindowed)
     {
+        // Before being able to call ToggleBorderlessWindowed()
+        // we must unset this flag it was explicitely set
+        // otherwise ToggleBorderlessWindowed() will beleive it is
+        // already in windowed fullscreen mode. 
+        CORE.Window.flags &= ~FLAG_BORDERLESS_WINDOWED_MODE;
         ToggleBorderlessWindowed();
     }
     else
