@@ -2040,21 +2040,22 @@ static bool _ActivateHardwareFullscreenMode(int monitorIndex, int desiredWidth, 
     // TODO : test __APPLE__ special case ? @SoloByte mission
     // TODO : test Wayland spacial case ?
 
-    CORE.Window.previousScreen = CORE.Window.render; // <== /!\ RENDER, not screen. This is not a bug.
-
+    int frameBufferWidth , frameBufferHeight;
+    glfwGetFramebufferSize(platform.handle, &frameBufferWidth, &frameBufferHeight);
+    CORE.Window.previousScreen = (Size){frameBufferWidth, frameBufferHeight};
 
     // Let's find a video mode that best matches our desired fullscreen mode :
 
     const GLFWvidmode *mode = NULL ; 
 
-    if ( desiredWidth > 0 && desiredHeight > 0 )
+    if (desiredWidth > 0 && desiredHeight > 0)
     {
         int modesCount = 0 ;
         const GLFWvidmode *modes = glfwGetVideoModes(monitor, &modesCount);
 
         for (int i = 0; i < modesCount; i++)
         {
-            if ( desiredRefreshRate == GLFW_DONT_CARE || desiredRefreshRate != modes[i].refreshRate )
+            if ((desiredRefreshRate == GLFW_DONT_CARE) || (desiredRefreshRate != modes[i].refreshRate))
             {
                 if (modes[i].width >= desiredWidth)
                 {
@@ -2071,7 +2072,7 @@ static bool _ActivateHardwareFullscreenMode(int monitorIndex, int desiredWidth, 
     // If we failed to find an appropriate video mode, we default to the current 
     // display mode of the monitor associated to the window :
 
-    if ( mode == NULL )
+    if (mode == NULL)
     {
         mode = glfwGetVideoMode(monitor);
     }
