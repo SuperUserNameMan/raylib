@@ -2014,8 +2014,11 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
     {
         TRACELOG(LOG_WARNING, "GLFW: failed to get requested monitor");
 
-        CORE.Window.fullscreen = false;
-        CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
+        // Here we don't know if the user is already in fullscreen mode or if the function is called 
+        // from `InitPlatform()` which would already have `CORE.Window.fullscreen` set to `true` when
+        // calling this function. 
+        // So we let the caller reset the `CORE.Window.fullscreen` and `CORE.Window.flags` as they should be
+        // in their scenario.
 
         // There is nothing more to do. Just leave the window where it is.
         return false;
