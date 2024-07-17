@@ -124,7 +124,7 @@ static void MouseScrollCallback(GLFWwindow *window, double xoffset, double yoffs
 static void CursorEnterCallback(GLFWwindow *window, int enter);                            // GLFW3 Cursor Enter Callback, cursor enters client area
 static void JoystickCallback(int jid, int event);                                           // GLFW3 Joystick Connected/Disconnected Callback
 
-static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool inFullscreenMode); // Better implementation of SetupFramebuffer()
+static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool inHardwareFullscreenMode); // Better implementation of SetupFramebuffer()
 
 static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate); 
 static void _DeactivateFullscreenMode();
@@ -149,7 +149,7 @@ bool WindowShouldClose(void)
 }
 
 // Local reimplementation of SetupFramebuffer()
-static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool inFullscreenMode)
+static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool inHardwareFullscreenMode)
 {
     // To avoid breaking backward compatibility and other platforms backends
     // that rely on `rcore.c` implementations of `SetupFramebuffer()` and `SetupViewport()`
@@ -160,7 +160,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
     // Let's clarify a little to avoid further confusion ...
 
     // We use these definitions :
-    // --`frameBuffer`             : size of the surface of the window in which Raylib is allowed to render.
+    // --`frameBuffer`             : size of the content surface of the window in which Raylib is allowed to render.
     //                               This is the frameBuffer that is cleared with `ClearBackground()`
     // - `CORE.Window.display`     : size of the display resolution of the main monitor on which the window is located.
     // - `CORE.Window.render`      : size of the viewport in which Raylib is allowed to draw. 
@@ -185,11 +185,15 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
     // | +---------------------------+ |
     // +-------------------------------+
 
-    // When `FLAG_RESCALE_CONTENT` is off (default and backward compatible mode) :
+
+    // When `FLAG_RESCALE_CONTENT` is disabled (default and backward compatible mode) :
     // - the size of `render` is always the same as the size of the frameBuffer
-    // - the size of `screen` is unscaled, and is thus the same as `render`
-    // - the size of `screen`, `render` are expressed in pixels
-    // - TODO explain when FLAG_WINDOW_HIGHDPI is enabled
+    // - the size of `screen` is unscaled (scale 1.0), and is thus the same as `render`
+    // - the size of `screen` and `render` are expressed in pixels
+    // When `FLAG_WINDOW_HIGHDPI` is also enabled :
+    // - the size of the frameBuffer provided as arguments, is already rescaled accordingly to the DPI scale 
+    // - the size of `render` is always the same as the size of the rescaled frameBuffer
+    // - the size of `screen` is also the same as `render^
 
     // When `FLAG_RESCALE_CONTENT` is on :
     // - the size of `render` is the size of `screen` rescaled to fit inside the frameBuffer
@@ -202,21 +206,25 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
 
     // Some booleans to ease code reading :
 
-    bool requestRescaledContent = (CORE.Window.flags & FLAG_RESCALE_CONTENT); // This is a WIP flag
+    bool requestRescaledContent = (CORE.Window.flags & FLAG_RESCALE_CONTENT); // This is a new flag that breaks backward compatibility
 
     bool weAreInBackwardCompatibleMode = !requestRescaledContent;
 
     // If we're in backward compatible mode there is no need to rescale and offset the screen to center it into the render.
 
-    if (weAreInBackwardCompatibleMode || inFullscreenMode)
+    if (weAreInBackwardCompatibleMode)
     {
         // In backward compatible mode, render always has the same size than the frameBuffer :
 
         CORE.Window.render.width = frameBufferWidth;
         CORE.Window.render.height = frameBufferHeight;
         
+        // Depending on which OS and desktop we are, the screen might 
+        // need to be rescaled accordingly to the DPI scale :
+
 #if defined(__APPLE__)
-        // The screen should not need to be rescaled neither
+        // On MacOS the screen should not need to be rescaled according to DPI // TODO @SoloByte
+
         CORE.Window.screen.width = frameBufferWidth;
         CORE.Window.screen.height = frameBufferHeight;
         CORE.Window.screenScale = MatrixIdentity(); 
@@ -224,16 +232,21 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         bool requestWindowHDPI      = (CORE.Window.flags & FLAG_WINDOW_HIGHDPI);
         bool weAreOnWaylandPlatform = (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND);
 
-        if (!inFullscreenMode && requestWindowHDPI && !weAreOnWaylandPlatform)
+        // On X11 and Windows, GLFW is asked to updates the size of the window and its frameBuffer 
+        // accordingly to the DPI. The consequence is that we must rescale the screen accordingly.
+
+        if (!inHardwareFullscreenMode && requestWindowHDPI && !weAreOnWaylandPlatform)
         {
             Vector2 windowScaleDPI = GetWindowScaleDPI();
 
+            // The screen should be upscaled or unscaled :
             CORE.Window.screenScale = MatrixScale(windowScaleDPI.x, windowScaleDPI.y, 1.0);
 
+            // If the  
             CORE.Window.screen.width = (unsigned int)roundf(frameBufferWidth/windowScaleDPI.x);
             CORE.Window.screen.height = (unsigned int)roundf(frameBufferHeight/windowScaleDPI.y);
         }
-        else
+        else // On Wayland, the screen should not need to be rescaled // TODO test Wayland
         {
             CORE.Window.screen.width = frameBufferWidth;
             CORE.Window.screen.height = frameBufferHeight;
