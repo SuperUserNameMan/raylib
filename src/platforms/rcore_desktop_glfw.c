@@ -1759,6 +1759,12 @@ static void WindowSizeCallback(GLFWwindow *window, int frameBufferWidth, int fra
 
 static void _SetupMouseScaleAndOffset()
 {
+    // Depending the current viewport and setup, we have to rescale and offset the mouse coordinate system
+    // returned by Raylib's mouse API functions.
+
+    // TODO : test __APPLE__ special case, @SoloByte mission
+    // TODO : test Wayland spacial case
+ 
 #if !defined(__APPLE__)
     if ( glfwGetPlatform() != GLFW_PLATFORM_WAYLAND )
     {
@@ -1770,6 +1776,7 @@ static void _SetupMouseScaleAndOffset()
 
     float mouseOffsetX = -0.5f*CORE.Window.renderOffset.x;
     float mouseOffsetY = -0.5f*CORE.Window.renderOffset.y;
+
     SetMouseOffset( mouseOffsetX , mouseOffsetY );
 }
 
