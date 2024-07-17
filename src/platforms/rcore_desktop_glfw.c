@@ -1316,7 +1316,9 @@ int InitPlatform(void)
     {
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE); 
         // TODO @SoloByte mission and Wayland test
-        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); // TODO : GLFW default it to true, whould it be changed to false ?
+        // TODO : GLFW default it to true, whould it be changed to false ?
+        // TODO : test difference MacOS and Wayland
+        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); 
     }
 
     // Mouse passthrough
