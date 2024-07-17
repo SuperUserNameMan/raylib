@@ -127,8 +127,8 @@ static void JoystickCallback(int jid, int event);                               
 // Customized and internal tool functions
 static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool inHardwareFullscreenMode); // Better implementation of SetupFramebuffer()
 
-static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate); 
-static void _DeactivateFullscreenMode();
+static bool _ActivateHardwareFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate); 
+static void _DeactivateHardwareFullscreenMode();
 
 static void _SetupMouseScaleAndOffset(); // Update mouse scale and offset according to current viewport
 
@@ -164,11 +164,11 @@ void ToggleFullscreen(void)
 
     if (!CORE.Window.fullscreen)
     {
-        _ActivateFullscreenMode( GetCurrentMonitor(), CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE );
+        _ActivateHardwareFullscreenMode( GetCurrentMonitor(), CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE );
     }
     else
     {
-        _DeactivateFullscreenMode();
+        _DeactivateHardwareFullscreenMode();
     }
 
     // Refocus window
@@ -1618,7 +1618,7 @@ int InitPlatform(void)
         // We don't use `ToggleFullscreen()` directly because `CORE.Window.fullscreen` is already set to `true`,
         // and `ToggleFullscreen()` would think it is already in fullscreen mode.
 
-        bool result = _ActivateFullscreenMode(monitorIndex, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
+        bool result = _ActivateHardwareFullscreenMode(monitorIndex, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
         if ( result == false )
         {
             TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
@@ -1984,7 +1984,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
 
 
 
-static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate)
+static bool _ActivateHardwareFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate)
 {
     // TODO FIXME allow swtiching from one fullscreen mode to an other ?
 
@@ -2099,7 +2099,7 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
     CORE.Window.display.width = mode->width;
     CORE.Window.display.height = mode->height;
 
-    _SetupFramebuffer(mode->width, mode->height, true); 
+    _SetupFramebuffer(mode->width, mode->height, true); // 3rd ags is `true` because we're in an hardware fullscreen mode
 
     // Update fullscreen indicators :
 
@@ -2119,7 +2119,7 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
 }
 
 
-static void _DeactivateFullscreenMode()
+static void _DeactivateHardwareFullscreenMode()
 {
     TRACELOG(LOG_INFO, "DISPLAY: Fullscreen mode before deinitialization");
     TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
@@ -2128,19 +2128,25 @@ static void _DeactivateFullscreenMode()
     TRACELOG(LOG_INFO, "    > Screen scale: %f x %f", CORE.Window.screenScale.m0, CORE.Window.screenScale.m5);
     TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
 
-    CORE.Window.fullscreen = false;
-    CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
-
     // Ask GLFW to restore the window and the previous monitor resolution :
 
     glfwSetWindowMonitor(platform.handle, NULL, CORE.Window.previousPosition.x, CORE.Window.previousPosition.y, CORE.Window.previousScreen.width, CORE.Window.previousScreen.height, GLFW_DONT_CARE);
+
+    // As we're leaving we must restore soem metrics :
 
     int monitorIndex = GetCurrentMonitor();
 
     CORE.Window.display.width = GetMonitorWidth(monitorIndex);
     CORE.Window.display.height = GetMonitorHeight(monitorIndex);
 
-    _SetupFramebuffer( CORE.Window.previousScreen.width, CORE.Window.previousScreen.height, false );
+    _SetupFramebuffer(CORE.Window.previousScreen.width, CORE.Window.previousScreen.height, false); 
+
+    // And also update the flags :
+
+    CORE.Window.fullscreen = false;
+    CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
+
+    // Then we're done !
 
     TRACELOG(LOG_INFO, "DISPLAY: Fullscreen mode deinitialized successfully");
     TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
