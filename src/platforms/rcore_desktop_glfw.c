@@ -1416,7 +1416,7 @@ int InitPlatform(void)
 
     // We can't have both fullscreen modes requested at the same time so we have to make a choice :
 
-    if ( requestBorderlessWindowed && requestHardwareFullscreen ) 
+    if (requestBorderlessWindowed && requestHardwareFullscreen) 
     {
         TRACELOG(LOG_WARNING, "DISPLAY: both fullscreen modes were requested. Ignoring `FLAG_FULLSCREEN_MODE`.");
 
@@ -1504,8 +1504,8 @@ int InitPlatform(void)
         // because it could also be interpreted as the desire to set a windowed window with a height or width same as
         // the available desktop area.
 
-        if ( CORE.Window.screen.width <= 0 ) CORE.Window.screen.width = mode->width;
-        if ( CORE.Window.screen.height <= 0 ) CORE.Window.screen.height = mode->height;
+        if (CORE.Window.screen.width <= 0) CORE.Window.screen.width = mode->width;
+        if (CORE.Window.screen.height <= 0) CORE.Window.screen.height = mode->height;
     }
 
     // If the user did not requestWindowHDPI, the size of the frameBuffer is the same as the requested screen size :
@@ -1553,8 +1553,8 @@ int InitPlatform(void)
     int monitorHeight = 0;
     glfwGetMonitorWorkarea(monitor, &monitorX, &monitorY, &monitorWidth, &monitorHeight);
 
-    int posX = monitorX + ( monitorWidth  - frameBufferWidth )/2;
-    int posY = monitorY + ( monitorHeight - frameBufferHeight )/2;
+    int posX = monitorX + (monitorWidth  - frameBufferWidth)/2;
+    int posY = monitorY + (monitorHeight - frameBufferHeight)/2;
 
     // If the frameBuffer was larger than the desktop area, we offset its position :
     if (posX < monitorX) posX = monitorX;
@@ -1598,51 +1598,6 @@ int InitPlatform(void)
         glfwSwapInterval(1);
         TRACELOG(LOG_INFO, "DISPLAY: Trying to enable VSYNC");
     }
-
-    // Activate fullscreen mode if requested
-    //----------------------------------------------------------------------------
-
-    if (requestWindowedWindow)
-    {
-        // Nothing to do here
-    }
-    else
-    if (requestBorderlessWindowed)
-    {
-        ToggleBorderlessWindowed();
-    }
-    else
-    if (requestHardwareFullscreen)
-    {
-        // We don't use `ToggleFullscreen()` directly because `CORE.Window.fullscreen` is already set to `true`,
-        // and `ToggleFullscreen()` would think it is already in fullscreen mode.
-
-        bool result = _ActivateHardwareFullscreenMode(monitorIndex, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
-        if ( result == false )
-        {
-            TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
-            // We don't close the window, nor terminate GLFW, nor interrupt the paltform intialization because it is just a warning.
-            // The user should still be able to use and access the window in windowed mode.
-            // TODO : see with @raysan5 how to formalize the returned error codes.
-
-            CORE.Window.fullscreen = false;
-            CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
-        }
-    }
-
-    // The mouse position returned by Raylib's API needs to be rescaled according to the current viewport :
-    // NOTE : we do it here manually because the GLFW callback are not set yet. Later, once all the GLFW callback will be set,
-    //        all the resizing and rescaling callings will be automated in `WindowSizeCallback()` and `WindowContentScaleCallback()`
-
-    _SetupMouseScaleAndOffset();
-
-    // TODO : do the same for gesture ?
-
-    // Not sure why a user would want to minimize a window just after creation
-    // but for the sake of backward compatibility, we leave this option available here :
-
-    if ((CORE.Window.flags & FLAG_WINDOW_MINIMIZED) > 0) MinimizeWindow();
-
 
 
     // Complete platform intialization :
@@ -1709,6 +1664,49 @@ int InitPlatform(void)
         case GLFW_PLATFORM_NULL:    glfwPlatform = "Null";    break;
     }
 #endif
+
+    //
+    // Activate fullscreen mode if requested
+    //----------------------------------------------------------------------------
+
+    // Now that we have our callbacks ready, we can safely rely on them to apply the appropriate 
+
+    if (requestWindowedWindow)
+    {
+        // Nothing to do here
+    }
+    else
+    if (requestBorderlessWindowed)
+    {
+        ToggleBorderlessWindowed();
+    }
+    else
+    if (requestHardwareFullscreen)
+    {
+        // We don't use `ToggleFullscreen()` directly because `CORE.Window.fullscreen` is already set to `true`,
+        // and `ToggleFullscreen()` would think it is already in fullscreen mode.
+
+        bool result = _ActivateHardwareFullscreenMode(monitorIndex, CORE.Window.screen.width, CORE.Window.screen.height, GLFW_DONT_CARE);
+        if ( result == false )
+        {
+            TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
+            // We don't close the window, nor terminate GLFW, nor interrupt the paltform intialization because it is just a warning.
+            // The user should still be able to use and access the window in windowed mode.
+            // TODO : see with @raysan5 how to formalize the returned error codes.
+
+            CORE.Window.fullscreen = false;
+            CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
+        }
+    }
+
+    glfwFocusWindow(platform.handle);
+
+    // Not sure why a user would want to minimize a window just after creation
+    // but for the sake of backward compatibility, we leave this option available here :
+
+    if ((CORE.Window.flags & FLAG_WINDOW_MINIMIZED) > 0) MinimizeWindow();
+
+    // We're done !
 
     TRACELOG(LOG_INFO, "GLFW platform: %s", glfwPlatform);
     TRACELOG(LOG_INFO, "PLATFORM: DESKTOP (GLFW): Initialized successfully");
