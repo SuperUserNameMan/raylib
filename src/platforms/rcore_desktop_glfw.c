@@ -211,6 +211,8 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
     bool weAreInBackwardCompatibleMode = !requestRescaledContent;
 
     // If we're in backward compatible mode there is no need to rescale and offset the screen to center it into the render.
+    // The size of the render is always the same as the size of the frameBuffer, and the size of screen is adapted to
+    // the size of the render. This means that if the size of frameBuffer changes, the size of screen changes too.
 
     if (weAreInBackwardCompatibleMode)
     {
@@ -220,10 +222,10 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         CORE.Window.render.height = frameBufferHeight;
         
         // Depending on which OS and desktop we are, the screen might 
-        // need to be rescaled accordingly to the DPI scale :
+        // need to be rendered accordingly to the DPI scale :
 
 #if defined(__APPLE__)
-        // On MacOS the screen should not need to be rescaled according to DPI // TODO @SoloByte
+        // On MacOS the screen should not need to be rescaled according to DPI // TODO @SoloByte mission
 
         CORE.Window.screen.width = frameBufferWidth;
         CORE.Window.screen.height = frameBufferHeight;
@@ -232,19 +234,28 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         bool requestWindowHDPI      = (CORE.Window.flags & FLAG_WINDOW_HIGHDPI);
         bool weAreOnWaylandPlatform = (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND);
 
-        // On X11 and Windows, GLFW is asked to updates the size of the window and its frameBuffer 
-        // accordingly to the DPI. The consequence is that we must rescale the screen accordingly.
+        // On X11 and Windows, GLFW is asked to update the size of the window and its frameBuffer accordingly 
+        // to the DPI scale of the display. The consequence is that we must rescale the screen accordingly.
+        // This DPI scaling is only required if the window is in windowed mode so the UI and texts are scaled
+        // proportionaly to the rest of the desktop environment. This also apply to `FLAG_BORDERLESS_WINDOWED_MODE`.
+        // In hardware fullscreen mode (aka `FLAG_FULLSCREEN_MODE`), however, DPI rescaling is not required because
+        // the application is running in exclusive fullscreen mode which is not meant to allow interaction with the 
+        // rest of the desktop environment.
 
         if (!inHardwareFullscreenMode && requestWindowHDPI && !weAreOnWaylandPlatform)
         {
             Vector2 windowScaleDPI = GetWindowScaleDPI();
 
-            // The screen should be upscaled or unscaled :
-            CORE.Window.screenScale = MatrixScale(windowScaleDPI.x, windowScaleDPI.y, 1.0);
-
-            // If the  
+            // If the window is in windowed fullscreen mode (aka `FLAG_BORDERLESS_WINDOWED_MODE`)
+            // the size of the frameBuffer is set to the size of the display.
+            // This means that GLFW could not resize the window and its frameBuffer accordingly to the DPI.
+            // The consequence is that we have to recompute the size of the screen accordingly
+            // to the size of the frameBuffer provided by GLFW.
             CORE.Window.screen.width = (unsigned int)roundf(frameBufferWidth/windowScaleDPI.x);
             CORE.Window.screen.height = (unsigned int)roundf(frameBufferHeight/windowScaleDPI.y);
+
+            // And now, the screen should be scaled to fit into the render :
+            CORE.Window.screenScale = MatrixScale(windowScaleDPI.x, windowScaleDPI.y, 1.0);
         }
         else // On Wayland, the screen should not need to be rescaled // TODO test Wayland
         {
@@ -254,7 +265,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         }
 #endif
 
-        // And no offset is required :
+        // And no offset is required because the render occupy the whole frameBuffer :
 
         CORE.Window.renderOffset.x = 0;
         CORE.Window.renderOffset.y = 0;
@@ -264,15 +275,19 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         return;
     }
 
-    // We are here because want to rescale and center the `screen` into the frameBuffer.
-    // Either "screen" is bigger than the frameBuffer and we need to downscale it,
-    // either it is smaller and we need to upscale it, but that's the same algorithm.
-    // Only the TRACELOG message changes :
+    // We are here because `FLAG_RESCALE_CONTENT` is enabled.
+    // It means we want to rescale and center the `screen` into the frameBuffer.
+    // In this mode, `FLAG_WINDOW_HIGHDPI` has no effect, because the size of screen always remains unchanged.
+    // Either the size of screen is bigger than the size of frameBuffer and we need to downscale the render of screen,
+    // either it is smaller and we need to upscale its render.
+    // TODO : we may want to consider very unusual case scenario when DPI scaling is not "square" (ie non square pixels) ?
 
     if ( requestRescaledContent )
     {
         TRACELOG(LOG_WARNING, "DISPLAY: FLAG_RESCALE_CONTENT is still WIP and experimental." );
     }
+
+    // Upscaling or downscaling uses the same algorithm. Only the TRACELOG message changes :
 
     bool screenIsBiggerThanDisplay = (CORE.Window.screen.width > frameBufferWidth) || (CORE.Window.screen.height > frameBufferHeight);
     bool screenIsSmallerThanDisplay = !screenIsBiggerThanDisplay;
@@ -292,10 +307,12 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
     float frameBufferAspectRatio = (float)frameBufferWidth/(float)frameBufferHeight;
     float screenAspectRatio = (float)CORE.Window.screen.width/(float)CORE.Window.screen.height;
 
-    // We need to scale "render" proportionaly to the size of "screen"
-    // so "render" fits into frameBuffer with the same aspect ratio than "screen".
+    // We need to resize render proportionaly to the aspect ratio of screen, 
+    // so that render fits into frameBuffer with the same aspect ratio than screen.
+    // Once we know the size of render, we will compute the scale at which screen
+    // will need to be rendered to fit into render :
 
-    float scaleRatio = 1.0f;
+    float screenScaleRatio = 1.0f;
 
     if ( screenAspectRatio > frameBufferAspectRatio )
     {
@@ -310,9 +327,9 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         CORE.Window.renderOffset.y = (frameBufferHeight - CORE.Window.render.height);
 
         // If the screen's aspect ratio is larger than the frameBuffer's, (like 16/9 versus 4/3)
-        // this means the screen has to be rescaled by the width ratio.
+        // this means the screen will have to be rendered rescaled by the width ratio.
 
-        scaleRatio = (float)frameBufferWidth/(float)CORE.Window.screen.width;
+        screenScaleRatio = (float)frameBufferWidth/(float)CORE.Window.screen.width;
     }
     else
     {
@@ -322,19 +339,19 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
         CORE.Window.render.width = CORE.Window.screen.width*frameBufferHeight/CORE.Window.screen.height;
         CORE.Window.render.height = frameBufferHeight;
 
-        CORE.Window.renderOffset.x = ( frameBufferWidth - CORE.Window.render.width );
+        CORE.Window.renderOffset.x = (frameBufferWidth - CORE.Window.render.width);
         CORE.Window.renderOffset.y = 0;
 
         // If the screen's aspect ratio is larger than the frameBuffer's, (like 4/3 versus 16/9)
-        // this means the screen has to be rescaled by the height ratio.
+        // this means the screen will have to be rendered rescaled by the height ratio.
 
-        scaleRatio = (float)frameBufferHeight/(float)CORE.Window.screen.height;
+        screenScaleRatio = (float)frameBufferHeight/(float)CORE.Window.screen.height;
     }
 
     // Let's update the scale at which the drawings will occurs on the screen surface 
     // once rendered into the "render" viewport :
 
-    CORE.Window.screenScale = MatrixScale(scaleRatio, scaleRatio, 1.0f);
+    CORE.Window.screenScale = MatrixScale(screenScaleRatio, screenScaleRatio, 1.0f);
 
     TRACELOG(LOG_DEBUG, "DISPLAY: Rescale matrix generated, content will be rendered at (%ix%i)", CORE.Window.screen.width, CORE.Window.screen.height);
 }
