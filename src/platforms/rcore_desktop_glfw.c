@@ -1622,9 +1622,12 @@ int InitPlatform(void)
         if ( result == false )
         {
             TRACELOG(LOG_WARNING,"DISPLAY: failed to activate fullscreen mode.");
-            // We don't close the window, nor terminate GLFW, not interrupt the paltform intialization because it is just a warning.
+            // We don't close the window, nor terminate GLFW, nor interrupt the paltform intialization because it is just a warning.
             // The user should still be able to use and access the window in windowed mode.
             // TODO : see with @raysan5 how to formalize the returned error codes.
+
+            CORE.Window.fullscreen = false;
+            CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
         }
     }
 
@@ -1983,7 +1986,7 @@ static void _SetupFramebuffer(int frameBufferWidth, int frameBufferHeight, bool 
 
 static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desiredHeight, int desiredRefreshRate)
 {
-    // TODO FIXME allow swtiching from one fullscreen mode to an other
+    // TODO FIXME allow swtiching from one fullscreen mode to an other ?
 
     TRACELOG(LOG_INFO, "DISPLAY: Fullscreen mode before initialization");
     TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
@@ -1993,7 +1996,8 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
     TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
 
     GLFWmonitor *monitor = NULL;
-    if ( monitorIndex < 0 )
+
+    if (monitorIndex < 0)
     {
         monitor = glfwGetPrimaryMonitor();
     }
@@ -2008,10 +2012,10 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
 
     if (monitor == NULL)
     {
-        TRACELOG(LOG_WARNING, "GLFW: failed to get monitor");
+        TRACELOG(LOG_WARNING, "GLFW: failed to get requested monitor");
 
-//        CORE.Window.fullscreen = false;
-//        CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
+        CORE.Window.fullscreen = false;
+        CORE.Window.flags &= ~FLAG_FULLSCREEN_MODE;
 
         // There is nothing more to do. Just leave the window where it is.
         return false;
