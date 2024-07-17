@@ -1306,15 +1306,17 @@ int InitPlatform(void)
     if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
     {
         // When the DPI of the monitor on which the window is displayed is changed,
-        // if the hints bellow are enabled, GLFW will resize the window and triggers a
-        // call to `WindowSizeCallback()` :
+        // the hint bellow ask GLFW to resize the window accordingly to the DPI :
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE); // Only has effect on Windows and X11
-        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); // Only has effect on MacOS and Wayland
+
+        // the hints bellow ask GLFW to resize the frameBuffer accordingly to the DPI : // TODO @SoloByte mission
+        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); // Only has effect on MacOS and Wayland // TODO Wayland test
     }
     else 
     {
-        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
-        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_FALSE);
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE); 
+        // TODO @SoloByte mission and Wayland test
+        glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE); // TODO : GLFW default it to true, whould it be changed to false ?
     }
 
     // Mouse passthrough
