@@ -1621,16 +1621,26 @@ int InitPlatform(void)
     // On Windows 11, in multi-monitor setups, each display might have 
     // its own DPI scaling. When moving ANY window (including Calc.exe) 
     // from one monitor to another, it appears that Windows 11 resizes 
-    // this window according to the DPI scaling of the destinated display.
-    // This behavior interferes with the current pipeline, so we have 
-    // to activate this callback even if `FLAG_WINDOW_HIGHDPI` is disabled
-    // and implement some sort of counter effect in `WindowContentScaleCallback()`
-    // just for Windows.
+    // this window according to the DPI scaling of the destination display.
+    // This also affects when toggle from fullscreen to windowed mode
+    // multiple time.
+    // This behavior interferes with the current pipeline, and could
+    // triggers some tiny changes in screen and render sizes that could 
+    // surprise the user or the developper.
+    // Unfortunately, I could not find any standard solution to disable 
+    // this behavior. So, for now, it will be a "can't fix".
+    
     // TODO FIXME : find which version of Windows are affected ?
+    // TODO FIXME : find a way to disable this behavior using a GLFW ?
     // TODO FIXME : find a way to disable this behavior using a Win32 API call ?
-    
+
+    // We enable the callback just to help the programmer notice
+    // the change of scale that may lead them to this instructive comment.
+    // NOTE : WindowContentScaleCallback() is not expected to do anything
+    // beside triggering a TRACELOG.
+
     glfwSetWindowContentScaleCallback(platform.handle, WindowContentScaleCallback);
-    
+
 #else
     if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
     {
@@ -2180,8 +2190,10 @@ static void _DeactivateHardwareFullscreenMode()
 // GLFW3 Callback, called when the DPI of the monitor is updated
 static void WindowContentScaleCallback(GLFWwindow *window, float scalex, float scaley)
 {
-    // We only display a message.
-    // The actual update of `CORE.Window.screenScale` will happen when `WindowSizeCallback()` is called.
+    //!\ Nothing to do here.
+    //!\ NOTE : The actual update of `CORE.Window.screenScale` will happen when `WindowSizeCallback()` is called.
+    //!\ We leave this callback active for debug and informative purpose.
+    
     TRACELOG(LOG_INFO, "SYSTEM: the DPI scaling of the monitor was udpated to %f x %f", scalex, scaley );
 }
 
