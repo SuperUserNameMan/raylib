@@ -2086,7 +2086,7 @@ static bool _ActivateFullscreenMode(int monitorIndex, int desiredWidth, int desi
     const char *errorMessage;
     int result = glfwGetError(&errorMessage);
 
-    if ( result !== GLFW_NO_ERROR )
+    if (result != GLFW_NO_ERROR)
     {
         TRACELOG(LOG_ERROR, "DISPLAY: GLFW failed to activate requested fullscreen mode.");
 
