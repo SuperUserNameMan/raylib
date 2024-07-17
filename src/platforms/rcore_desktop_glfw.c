@@ -1399,8 +1399,7 @@ int InitPlatform(void)
     // For the sake of code readability, we're going to establish a boolean vocabulary :
 
     bool requestWindowHDPI          = (CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0;
-    bool requestRescaledContent     = (CORE.Window.flags & FLAG_RESCALE_CONTENT) > 0; //!\ If enabled, this flag breaks backward compatibility
-
+    
     bool requestVsync               = (CORE.Window.flags & FLAG_VSYNC_HINT) > 0;
 
     bool invalidWindowSizeRequested = (CORE.Window.screen.width <= 0) || (CORE.Window.screen.height <= 0);
@@ -1447,7 +1446,7 @@ int InitPlatform(void)
     
     // Now let's create the window :
 
-    char *windowTitle = (CORE.Window.title != 0) ? CORE.Window.title : " ";
+    const char *windowTitle = (CORE.Window.title != 0) ? CORE.Window.title : " ";
 
     platform.handle = glfwCreateWindow(frameBufferWidth, frameBufferHeight, windowTitle, NULL, NULL);
 
@@ -1593,7 +1592,7 @@ int InitPlatform(void)
     // Try to enable GPU V-Sync, so frames are limited to screen refresh rate (60Hz -> 60 FPS)
     // NOTE: V-Sync can be enabled by graphic driver configuration, it doesn't need
     // to be activated on web platforms since VSync is enforced there.
-    if (CORE.Window.flags & FLAG_VSYNC_HINT)
+    if (requestVsync)
     {
         // WARNING: It seems to hit a critical render path in Intel HD Graphics
         glfwSwapInterval(1);
@@ -1603,17 +1602,17 @@ int InitPlatform(void)
     // Activate fullscreen mode if requested
     //----------------------------------------------------------------------------
 
-    if ( requestWindowedWindow )
+    if (requestWindowedWindow)
     {
         // Nothing to do here
     }
     else
-    if ( requestBorderlessWindowed )
+    if (requestBorderlessWindowed)
     {
         ToggleBorderlessWindowed();
     }
     else
-    if ( requestHardwareFullscreen )
+    if (requestHardwareFullscreen)
     {
         // We don't use `ToggleFullscreen()` directly because `CORE.Window.fullscreen` is already set to `true`,
         // and `ToggleFullscreen()` would think it is already in fullscreen mode.
