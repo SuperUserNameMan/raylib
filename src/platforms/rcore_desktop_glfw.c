@@ -1673,7 +1673,7 @@ int InitPlatform(void)
 
     if (requestWindowedWindow)
     {
-        // Nothing to do here
+        WindowSizeCallback(platform.handle, frameBufferWidth, frameBufferHeight);
     }
     else
     if (requestBorderlessWindowed)
@@ -1700,7 +1700,7 @@ int InitPlatform(void)
     }
 
     glfwFocusWindow(platform.handle);
-
+   
     // Not sure why a user would want to minimize a window just after creation
     // but for the sake of backward compatibility, we leave this option available here :
 
